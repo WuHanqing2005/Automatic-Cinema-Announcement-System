@@ -1,0 +1,6 @@
+uid_list_admin = ['UID_sG9SP4pGXirFnBEeWPrahV3iKBmL']
+machine_info = '万瑞电影城 沈北店'
+api_url = 'http://wxpusher.zjiecode.com/api/send/message'
+appToken = 'AT_JSUGQyhL9sfnoFcDASFphPGKLCC5VrtG'
+appKey = '62862'
+url = 'https://www.maoyan.com/cinema/40086?poi=597054201'
