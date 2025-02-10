@@ -21,6 +21,7 @@ It is a system that can play film announcement automatically.
 欢迎提出宝贵意见，感谢支持！
 
 ————————————————————
+
 更新日志：
 
 2025.02.10 21:00
@@ -28,6 +29,7 @@ It is a system that can play film announcement automatically.
 程序诞生，基于电影院自动广播系统（通过爬虫）修改而来，之前的程序为万瑞电影院（黎明店）所用
 
 ————————————————————
+
 广播模板：
 
 756.wav                      --  756提示音
@@ -47,6 +49,7 @@ filmname_cn\\熊出没.wav       --  熊出没
 template_cn\\3.wav           --  现在开始检票入场，谢谢！
 
 ————————————————————
+
 软件使用说明：
 
 请勿擅自修改本软件目录下的任何文件！！！
@@ -98,4 +101,3 @@ output文件夹：存放生成的广播语音文件。
 更新语音包，请联系网页作者吴瀚庆，微信：whq20050121，或邮箱：m19528873640@outlook.com
 
 将需要更新的语音包，放入对应的material文件夹中，例如电影名称语音包需要放到material文件夹下的filmname_cn文件夹中。
-
