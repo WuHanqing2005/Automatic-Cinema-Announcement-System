@@ -1,14 +1,23 @@
 # Automatic-Cinema-Announcement-System
 It is a system that can play film announcement automatically.
+
 软件名称：沈北万瑞电影城-自动广播系统
+
 版本号：2025.02.10 21:00 (正式版)
+
 软件版权归属：吴瀚庆
+
 未经允许，禁止盗用，侵权必究
 
+
 有意请联系软件作者 吴瀚庆
+
 微信：whq20050121
+
 手机：19528873640
+
 邮箱：m19528873640@outlook.com
+
 欢迎提出宝贵意见，感谢支持！
 
 ————————————————————
