@@ -1,7 +1,7 @@
 # Automatic-Cinema-Announcement-System
 It is a system that can play film announcement automatically.
 
-下载地址：https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System.zip
+下载地址：[https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System.zip](https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System-2025.02.11.zip)
 
 软件名称：沈北万瑞电影城-自动广播系统
 
