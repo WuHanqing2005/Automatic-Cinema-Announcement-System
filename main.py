@@ -1,6 +1,6 @@
 '''
 软件名称：电影院自动广播测试系统（通过爬虫）
-版本号：2025.02.11 13:00 (正式版)
+版本号：2025.02.13 00:00(正式版)
 软件版权归属：吴瀚庆
 未经允许，禁止盗用，侵权必究
 
@@ -33,7 +33,7 @@ from pydub import AudioSegment
 
 film_played = []    # 初始化已播放电影列表
 
-version_code = '2025.02.11 13:00 (正式版)'     # 版本号
+version_code = '2025.02.13 00:00(正式版)'     # 版本号
 
 # 读取info.txt文件中的配置信息
 config = {}
@@ -986,7 +986,61 @@ def stop_all_audio():
         # 播放完成后退出pygame
         pygame.quit()
         
+# 定义一个函数来检查正在播放的电影
+def check_playing_movies():
+    while True:
+        # 获取当前系统时间
+        current_time = datetime.now().strftime('%H:%M')
+        current_time_obj = datetime.strptime(current_time, '%H:%M')  # 将当前时间转换为datetime对象
+        
+        # 遍历表格中的所有行
+        for item in table.get_children():
+            try:
+                # 获取每一行的数据
+                row_data = table.item(item, 'values')
+                
+                date = row_data[1]
+                start_time = row_data[3]
+                end_time = row_data[4]
+                
+                # 将开始时间和结束时间转换为datetime对象
+                start_time_obj = datetime.strptime(start_time, '%H:%M')
+                end_time_obj = datetime.strptime(end_time, '%H:%M')
+                
+                # 计算当前时间与结束时间的差值（以分钟为单位）
+                time_difference = (end_time_obj - current_time_obj).total_seconds() / 60
+                
+                # 判断当前时间是否在开始时间和结束时间之间
+                if start_time <= current_time <= end_time and date == '今天':
+                    # 如果正在播放，设置背景为绿色lightgreen
+                    table.tag_configure('playing', background='lightgreen')
+                    table.item(item, tags=('playing',))
+                    
+                    # 如果电影在10分钟内结束，设置背景为浅红色#F08080
+                    if 0 <= time_difference <= 10:
+                        table.tag_configure('ending_soon', background='#F08080')
+                        table.item(item, tags=('ending_soon',))
+                else:
+                    # 如果不在播放，清除背景色
+                    table.item(item, tags=('',))
+            except Exception as e:
+                print(f"检查播放电影时发生错误: {e}")
+                write_error_log(e)
+        
+        # 每5秒检查一次
+        time.sleep(5)
+        
 
+# 更新当前时间的函数
+def update_time():
+    current_time = time.strftime('%H:%M:%S', time.localtime(time.time()))
+    time_label.config(text=current_time)
+    # 每隔1秒更新一次时间
+    root.after(1000, update_time)
+
+
+
+# 主程序
 if __name__ == '__main__':
     pygame.init()
     pygame.mixer.init()
@@ -1008,7 +1062,7 @@ if __name__ == '__main__':
     root.title("电影院自动广播系统")
     
     # 设置窗口大小
-    window_width = 600
+    window_width = 650
     window_height = 600
     
     # 获取屏幕宽高
@@ -1022,15 +1076,19 @@ if __name__ == '__main__':
     # 设置窗口大小及位置
     root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
+    # 表格显示区域样式设置
+    style = ttk.Style()
+    style.configure("Treeview", font=("Microsoft YaHei", 12, "bold"), rowheight=30)  # 设定字体，字号，加粗，行高
+
     # 创建表格
     table = ttk.Treeview(root, columns=("Filmname", "Date name", "Date day", "Start time", "End time", "Hall No."), show="headings")
     
     # 设置每列的标题和宽度
     table.heading("Filmname", text="电影名称")
-    table.column("Filmname", width=200, anchor=tk.CENTER)  # 设置电影名称列的宽度为200像素，文本居中显示
+    table.column("Filmname", width=240, anchor=tk.CENTER)  # 设置电影名称列的宽度为240像素，文本居中显示
 
     table.heading("Date name", text="日期")
-    table.column("Date name", width=40, anchor=tk.CENTER)  # 设置日期列的宽度为40像素，文本居中显示
+    table.column("Date name", width=50, anchor=tk.CENTER)  # 设置日期列的宽度为50像素，文本居中显示
 
     table.heading("Date day", text="日期详情")
     table.column("Date day", width=80, anchor=tk.CENTER)  # 设置日期详情列的宽度为80像素，文本居中显示
@@ -1123,6 +1181,10 @@ if __name__ == '__main__':
     modify_button = tk.Button(button_frame, text="修改电影信息", command=modify_movie_info)
     modify_button.pack(side=tk.RIGHT, padx=10, pady=10)
     
+    # 创建一个标签，用于显示当前时间
+    time_label = tk.Label(first_frame, text="", font=("Times New Roman", 30))
+    time_label.pack(side=tk.RIGHT, padx=10, pady=10)
+    
     # 第2行
     second_frame = tk.Frame(root)
     second_frame.pack(fill='x')
@@ -1145,5 +1207,11 @@ if __name__ == '__main__':
 
     # 启动定时检测线程
     threading.Thread(target=check_movies, daemon=True).start()
+
+    # 启动检查正在播放电影的线程
+    threading.Thread(target=check_playing_movies, daemon=True).start()
+
+    # 启动时间更新
+    update_time()
 
     root.mainloop()
