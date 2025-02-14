@@ -1,6 +1,6 @@
 '''
 软件名称：电影院自动广播测试系统（通过爬虫）
-版本号：2025.02.13 00:00(正式版)
+版本号：2025.02.14 15:10(正式版)
 软件版权归属：吴瀚庆
 未经允许，禁止盗用，侵权必究
 
@@ -33,7 +33,7 @@ from pydub import AudioSegment
 
 film_played = []    # 初始化已播放电影列表
 
-version_code = '2025.02.13 00:00(正式版)'     # 版本号
+version_code = '2025.02.14 15:10(正式版)'     # 版本号
 
 # 读取info.txt文件中的配置信息
 config = {}
@@ -238,8 +238,10 @@ def convert_to_stereo(input_folder):
     # messagebox.showinfo("Information", "Converting audio files to dual-channel successfully!")
     root.destroy()
 
+# 爬取猫眼网获取电影排期的函数
 def fetch_movie_schedules(url, progress_window):
-    global successful
+    global successful, cinema_name, cinema_address  # 添加全局变量
+
     try:
         max_attempts = 50
         attempts = 0
@@ -260,6 +262,18 @@ def fetch_movie_schedules(url, progress_window):
                 print(f"Response Content (First 100 chars): {response.text[:100]}")
 
                 soup = BeautifulSoup(response.text, 'html.parser')
+
+                # 新增：爬取电影院名称和地址
+                cinema_info = soup.find('div', class_='cinema-main clearfix')
+                if cinema_info:
+                    global cinema_name, cinema_address
+                    cinema_name = cinema_info.find('h1', class_='name text-ellipsis').text.strip()
+                    cinema_address = cinema_info.find('div', class_='address text-ellipsis').text.strip()
+
+                    # 调试代码
+                    print(f"Cinema Name: {cinema_name}")
+                    print(f"Cinema Address: {cinema_address}")
+
                 movie_sections = soup.find_all('div', class_='show-list')
 
                 if not movie_sections:
@@ -340,9 +354,12 @@ def fetch_movie_schedules(url, progress_window):
 
         sorted_data = sorted(data, key=sort_key)
 
-        # 输出整理后的二维数组
-        for row in sorted_data:
-            print(row)
+        # 调试信息，输出整理后的二维数组前5个元素
+        print('The first 5 rows of sorted data:')
+        for i in range(5):
+            print(sorted_data[i])
+        # for row in sorted_data:
+        #     print(row)
 
         # 将二维数组写入 Excel 文件
         write_to_excel(sorted_data)
@@ -725,8 +742,9 @@ def read_from_excel_and_update():
     check_movie_name()
 
 
+# 读取并刷新的函数
 def refresh_data():
-    global data
+    global data, cinema_name, cinema_address
     # 获取屏幕宽高
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
@@ -750,19 +768,22 @@ def refresh_data():
     # 更新数据
     data = new_data
     update_table(data)
-    
+
     # 更新下拉列表
     movie_drop_down['values'] = [f"{row[0]}-{row[1]}-{row[3]}" for row in data]
     movie_drop_down.set('')  # 清空当前选择的电影
-    
+
+    # 更新电影院名称和地址的标签
+    cinema_info_label.config(text=f"电影院：{cinema_name} 影院地址：{cinema_address}")
+
     progress_window.destroy()
-    if successful == True:
+    if successful:
         messagebox.showinfo("信息", "所有电影信息已成功爬取，并全部刷新！")
-    elif successful == False:
+    elif not successful:
         messagebox.showwarning("警告", "电影信息爬取失败，请稍后再试！")
     else:
         messagebox.showinfo("信息", "遇到了一些问题！")
-        
+    
     # 获取缺失的电影名称
     check_movie_name()
 
@@ -987,6 +1008,7 @@ def stop_all_audio():
         pygame.quit()
         
 # 定义一个函数来检查正在播放的电影
+# 定义一个函数来检查正在播放的电影
 def check_playing_movies():
     while True:
         # 获取当前系统时间
@@ -1008,8 +1030,9 @@ def check_playing_movies():
                 end_time_obj = datetime.strptime(end_time, '%H:%M')
                 
                 # 计算当前时间与结束时间的差值（以分钟为单位）
-                time_difference = (end_time_obj - current_time_obj).total_seconds() / 60
-                
+                time_difference_end = (end_time_obj - current_time_obj).total_seconds() / 60
+                time_difference_start = (start_time_obj - current_time_obj).total_seconds() / 60  # 新增
+
                 # 判断当前时间是否在开始时间和结束时间之间
                 if start_time <= current_time <= end_time and date == '今天':
                     # 如果正在播放，设置背景为绿色lightgreen
@@ -1017,9 +1040,13 @@ def check_playing_movies():
                     table.item(item, tags=('playing',))
                     
                     # 如果电影在10分钟内结束，设置背景为浅红色#F08080
-                    if 0 <= time_difference <= 10:
+                    if 0 <= time_difference_end <= 10:
                         table.tag_configure('ending_soon', background='#F08080')
                         table.item(item, tags=('ending_soon',))
+                # 新增：判断是否在10分钟内即将开始
+                elif 0 <= time_difference_start <= 10 and date == '今天':
+                    table.tag_configure('upcoming', background='yellow')
+                    table.item(item, tags=('upcoming',))
                 else:
                     # 如果不在播放，清除背景色
                     table.item(item, tags=('',))
@@ -1042,6 +1069,11 @@ def update_time():
 
 # 主程序
 if __name__ == '__main__':
+    # 初始化null值
+    cinema_name = "null"
+    cinema_address = "null"
+
+    # 初始化pygame和pygame.mixer
     pygame.init()
     pygame.mixer.init()
     
@@ -1173,11 +1205,11 @@ if __name__ == '__main__':
     refresh_button = tk.Button(button_frame, text="读取并刷新", command=refresh_data)
     refresh_button.pack(side=tk.RIGHT, padx=10, pady=10)
     
-    # 新增按钮：从data.xlsx读取电影信息
+    # 从data.xlsx读取电影信息的按钮
     read_excel_button = tk.Button(button_frame, text="从Excel读取", command=read_from_excel_and_update)
     read_excel_button.pack(side=tk.RIGHT, padx=10, pady=10)
     
-    # 新增按钮：修改电影信息
+    # 修改电影信息的按钮
     modify_button = tk.Button(button_frame, text="修改电影信息", command=modify_movie_info)
     modify_button.pack(side=tk.RIGHT, padx=10, pady=10)
     
@@ -1190,20 +1222,21 @@ if __name__ == '__main__':
     second_frame.pack(fill='x')
     tk.Label(second_frame, text=f"已设置提前 {pre_minute} 分钟检票，每个广播循环播放 {cycle_time} 次。").pack(side=tk.LEFT, padx=10, pady=1)
     
-    # 第3行
-    third_frame = tk.Frame(root)
-    third_frame.pack(fill='x')
-    tk.Label(third_frame, text=f"软件版权归属于：吴瀚庆    版本号：{version_code}    欢迎联系软件作者：whq20050121").pack(side=tk.LEFT, padx=10, pady=1)
+    # 第3行，用来显示电影院名称和地址
+    cinema_frame = tk.Frame(root)
+    cinema_frame.pack(fill='x')
+    cinema_info_label = tk.Label(cinema_frame, text=f"电影院：{cinema_name} 影院地址：{cinema_address}")
+    cinema_info_label.pack(side=tk.LEFT, padx=10, pady=1)
     
     # 第4行
     fourth_frame = tk.Frame(root)
     fourth_frame.pack(fill='x')
-    tk.Label(fourth_frame, text=f"请点击按钮“读取并刷新”，以便获取最新的电影场次信息。").pack(side=tk.LEFT, padx=10, pady=1)
+    tk.Label(fourth_frame, text=f"软件版权归属于：吴瀚庆    版本号：{version_code}    欢迎联系软件作者：whq20050121").pack(side=tk.LEFT, padx=10, pady=1)
     
     # 第5行
-    fifth_frame = tk.Frame(root)
-    fifth_frame.pack(fill='x')
-    tk.Label(fifth_frame, text=f"请避免过于频繁停止播放，请定期清空缓存，以便清理output文件夹下已合成的音频。").pack(side=tk.LEFT, padx=10, pady=1)
+    # fifth_frame = tk.Frame(root)
+    # fifth_frame.pack(fill='x')
+    # tk.Label(fifth_frame, text=f"请避免过于频繁停止播放，请定期清空缓存，以便清理output文件夹下已合成的音频。").pack(side=tk.LEFT, padx=10, pady=1)
 
     # 启动定时检测线程
     threading.Thread(target=check_movies, daemon=True).start()
