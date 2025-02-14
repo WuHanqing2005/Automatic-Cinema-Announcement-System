@@ -1,11 +1,11 @@
 # Automatic-Cinema-Announcement-System
 It is a system that can play film announcement automatically.
 
-下载地址：https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System-2025.02.13.zip
+下载地址：https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System-2025.02.11.zip
 
 软件名称：沈北万瑞电影城-自动广播系统
 
-版本号：2025.02.13 00:00(正式版)
+版本号：2025.02.14 15:10(正式版)
 
 软件版权归属：吴瀚庆
 
@@ -34,6 +34,11 @@ It is a system that can play film announcement automatically.
 
 增加了颜色显示，十分钟内即将结束的电影用浅红色显示，其他正在播放的电影用绿色显示，每5秒刷新一次
 增加了系统时间实时显示，每秒刷新一次，使得看当前系统时间更加直观方便
+
+2025.02.14 15:10
+
+新增了10分钟内即将开场电影用黄色显示的功能
+下方文本显示区进行了一些精简，并添加了爬取电影院名称和地址的功能，显示在文本显示区中
 
 ————————————————————
 
