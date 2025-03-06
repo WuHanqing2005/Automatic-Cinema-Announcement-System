@@ -1,6 +1,6 @@
 '''
 软件名称：电影院自动广播测试系统（通过爬虫）
-版本号：2025.02.14 15:10(正式版)
+版本号：2025.03.06 08:20(正式版)
 软件版权归属：吴瀚庆
 未经允许，禁止盗用，侵权必究
 
@@ -33,7 +33,12 @@ from pydub import AudioSegment
 
 film_played = []    # 初始化已播放电影列表
 
-version_code = '2025.02.14 15:10(正式版)'     # 版本号
+version_code = '2025.03.04 19:30(正式版)'     # 版本号
+
+# 全局变量
+cycle_time = 2  # 默认重复播放次数
+pre_minute = 5  # 默认提前检票分钟数
+table_lock = threading.Lock()   # 线程锁，防止访问表格时出现冲突
 
 # 读取info.txt文件中的配置信息
 config = {}
@@ -89,42 +94,46 @@ def write_error_log(error_message):
     with open(log_filename, "a") as file:
         file.write(log_message)
     
-    # wxpusher的API接口地址
-    # print(api_url)  # 打印 api_url 以确认其值
+    # 定义一个函数用于发送错误日志
+    def send_error_log():
+        try:
+            for uid in uid_list_admin:
+                # 构建发送消息的请求参数
+                data = {
+                    "appToken": appToken,
+                    "content": str(error_message),  # 使用转换后的字符串
+                    "summary": "电影院自动广播测试系统 错误信息",
+                    "contentType": 1,
+                    "topicIds": [123],
+                    "uids": [uid]  # 替换成要发送消息的微信用户的userId
+                }
 
-    # 替换成自己的appToken和appKey
-    # appToken = appToken
-    # appKey = appKey
- 
-    # 将错误消息转换为字符串，以便它可以被 JSON 序列化
-    content = str(error_message)
- 
-    # 尝试发出网络请求，推送消息
-    try:
-        for uid in uid_list_admin:
-            # 构建发送消息的请求参数
-            data = {
-                "appToken": appToken,
-                "content": content,  # 使用转换后的字符串
-                "summary": "电影院自动广播测试系统 错误信息",
-                "contentType": 1,
-                "topicIds": [123],
-                "uids": [
-                    uid  # 替换成要发送消息的微信用户的userId
-                ]
-            }
+                # 发送POST请求
+                response = requests.post(api_url, json=data)
 
-            # 发送POST请求
-            response = requests.post(api_url, json=data)
+                # 打印返回的结果
+                # print(response.json())
+        except Exception as e:
+            print(f"发送错误日志失败: {e}")
 
-            # 打印返回的结果
-            # print(response.json())
-    except:
-        print('Send error message failed.')        
+    # 创建一个线程来执行发送错误日志的操作
+    send_thread = threading.Thread(target=send_error_log)
+    send_thread.start()
+
+    # 设置超时时间为1秒
+    send_thread.join(timeout=1)
+
+    # 如果线程仍然在运行（即超时），则弹出错误窗口
+    if send_thread.is_alive():
+        # 超时处理，显示错误信息
+        messagebox.showwarning("警告", "由于网络原因，错误日志未能成功发送。")
+        
+        # 继续执行主程序
+        pass               
 
 # 检查电影名文件缺失的函数
 def check_movie_name():
-    missing_files = []  # 用于存储缺失的电影名称.wav文件
+    missing_files = set()  # 使用集合存储缺失的电影名称.wav文件，自动去重
     # 遍历data数组中的每一行数据
     try:
         for row in data:
@@ -133,7 +142,7 @@ def check_movie_name():
             file_path = os.path.join('material', 'filmname_cn', f'{film_name}.wav')
             # 检查文件是否存在
             if not os.path.exists(file_path):
-                missing_files.append(file_path)  # 如果文件不存在，添加到缺失文件列表中
+                missing_files.add(file_path)  # 如果文件不存在，添加到集合中
 
         # 如果有缺失的文件，弹出报错窗口
         if missing_files:
@@ -147,7 +156,8 @@ def check_movie_name():
         messagebox.showwarning("警告", warning_message)
         print(warning_message)
         write_error_log(warning_message)
-        
+
+
 
 def delete_all_files_in_directory(directory_path):
     # 检查目录是否存在
@@ -341,16 +351,11 @@ def fetch_movie_schedules(url, progress_window):
 
         # 排序数据
         # 自定义排序规则
-        for row in data:
-            if '周日' in row:
-                date_priority = {'今天': 1, '明天': 2, '后天': 3, '周四': 4, '周五': 5, '周六': 6, '周日': 7, '周一': 8, '周二': 9, '周三': 10}
-                break
-            else:
-                date_priority = {'今天': 1, '明天': 2, '后天': 3, '周一': 4, '周二': 5, '周三': 6, '周四': 7, '周五': 8, '周六': 9, '周日': 10}
-        # 排序数据的函数
         def sort_key(row):
-            date_name = row[1]  # 取出日期
-            return (date_priority.get(date_name, 11), row[3])  # 默认值11，未知日期放在最后
+            date_day = row[2]  # 取出日期详情
+            start_time = row[3]  # 取出开始时间
+            # 将日期详情和开始时间组合成一个元组进行排序
+            return (date_day, start_time)
 
         sorted_data = sorted(data, key=sort_key)
 
@@ -358,8 +363,6 @@ def fetch_movie_schedules(url, progress_window):
         print('The first 5 rows of sorted data:')
         for i in range(5):
             print(sorted_data[i])
-        # for row in sorted_data:
-        #     print(row)
 
         # 将二维数组写入 Excel 文件
         write_to_excel(sorted_data)
@@ -371,45 +374,70 @@ def fetch_movie_schedules(url, progress_window):
     except Exception as e:
         write_error_log(e)
 
+# 将电影信息data写入Excel文件的函数
 def write_to_excel(data):
-    # 创建一个新的工作簿和工作表
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
-    sheet.title = 'Movie Schedules'
+    try:
+        # 尝试获取锁，设置超时时间为1秒
+        if table_lock.acquire(timeout=1):
+            try:
+                # 创建一个新的工作簿和工作表
+                workbook = openpyxl.Workbook()
+                sheet = workbook.active
+                sheet.title = 'Movie Schedules'
 
-    # 写入标题行
-    sheet.append(['Filmname', 'Date name', 'Date day', 'Start time', 'End time', 'Hall No.'])
+                # 写入标题行
+                sheet.append(['Filmname', 'Date name', 'Date day', 'Start time', 'End time', 'Hall No.'])
 
-    # 写入每一行数据
-    for row in data:
-        sheet.append(row)
+                # 写入每一行数据
+                for row in data:
+                    sheet.append(row)
 
-    # 保存 Excel 文件
-    workbook.save('data.xlsx')
-    print("数据成功写入 data.xlsx 文件。")
+                # 保存 Excel 文件
+                workbook.save('data.xlsx')
+                print("数据成功写入 data.xlsx 文件。")
+            finally:
+                # 释放锁
+                table_lock.release()
+    except Exception as e:
+        print(f"写入Excel文件错误: {e}")
+        write_error_log(e)
 
 # 从xlsx表格读取电影信息并显示的函数
 def read_from_excel():
     try:
-        workbook = openpyxl.load_workbook('data.xlsx')
-        sheet = workbook.active
-        data = []
-        for row in sheet.iter_rows(min_row=2, values_only=True):
-            data.append(row)
-        return data
+        # 尝试获取锁，设置超时时间为1秒
+        if table_lock.acquire(timeout=1):
+            try:
+                workbook = openpyxl.load_workbook('data.xlsx')
+                sheet = workbook.active
+                data = []
+                for row in sheet.iter_rows(min_row=2, values_only=True):
+                    data.append(row)
+                return data
+            finally:
+                # 释放锁
+                table_lock.release()
     except Exception as e:
         print(f"读取Excel文件错误: {e}")
         write_error_log(e)
         return []
 
-
+# 更新表格显示的函数
 def update_table(data):
-    for i in reversed(table.get_children()):
-        table.delete(i)
-    for row in data:
-        table.insert('', 'end', values=row)
- 
-
+    try:
+        # 尝试获取锁，设置超时时间为1秒
+        if table_lock.acquire(timeout=1):
+            try:
+                for i in reversed(table.get_children()):
+                    table.delete(i)
+                for row in data:
+                    table.insert('', 'end', values=row)
+            finally:
+                # 释放锁
+                table_lock.release()
+    except Exception as e:
+        print(f"更新表格时发生错误: {e}")
+        write_error_log(e)
 
 # 修改电影信息的函数
 def modify_movie_info():
@@ -474,21 +502,23 @@ def modify_movie_info():
                 messagebox.showerror("错误", "时间格式不正确，请输入有效的24小时制时间（如14:30）")
                 return
 
-            # 更新数据
-            for i, row in enumerate(data):
-                if f"{row[0]}-{row[1]}-{row[3]}" == selection:
-                    data[i] = modified_data
-                    break
+            # 使用线程锁
+            with table_lock:
+                # 更新数据
+                for i, row in enumerate(data):
+                    if f"{row[0]}-{row[1]}-{row[3]}" == selection:
+                        data[i] = modified_data
+                        break
 
-            # 写入 Excel 文件
-            write_to_excel(data)
+                # 写入 Excel 文件
+                write_to_excel(data)
 
-            # 更新表格
-            update_table(data)
+                # 更新表格
+                update_table(data)
 
-            # 更新下拉列表
-            movie_drop_down['values'] = [f"{row[0]}-{row[1]}-{row[3]}" for row in data]
-            movie_drop_down.set('')  # 清空当前选择的电影
+                # 更新下拉列表
+                movie_drop_down['values'] = [f"{row[0]}-{row[1]}-{row[3]}" for row in data]
+                movie_drop_down.set('')  # 清空当前选择的电影
 
             # 关闭修改窗口
             modify_window.destroy()
@@ -568,8 +598,6 @@ def search_data():
             end_hour, end_minute = str(selected_data[4]).split(sep = ':')[0], str(selected_data[4]).split(sep = ':')[1]
             hall_number = str(str(selected_data[5]).split(sep = '号厅')[0])
         
-
-            '''
             if hall_number in ['1', '3', '4']:
                 check_in_counter = 'left'
             elif hall_number in ['2', '5']:
@@ -577,14 +605,13 @@ def search_data():
             else:
                 messagebox.showerror("错误", "未找到符合条件的放映厅！")
                 return
-            '''
-            check_in_counter = ''
 
             list = [os.path.join('material', 'mix', '756.wav'), os.path.join('material', 'template_cn', '1.wav'), 
             os.path.join('material', 'hall_cn', f'{hall_number}.wav'), 
             os.path.join('material', 'hour_cn', f'{start_hour}.wav'), os.path.join('material', 'minute_cn', f'{start_minute}.wav'),
             os.path.join('material', 'template_cn', '2.wav'), os.path.join('material', 'filmname_cn', f'{film_name}.wav'),
-            os.path.join('material', 'template_cn', '3.wav')] * cycle_time
+            os.path.join('material', 'template_cn', '3.wav'), os.path.join('material', 'gate_cn', f'{check_in_counter}.wav'), 
+            os.path.join('material', 'template_cn', '4.wav')] * cycle_time
 
             # 756.wav                      --  756提示音
             # template_cn\\1.wav           --  各位观众请注意
@@ -597,7 +624,10 @@ def search_data():
             # template_cn\\2.wav           --  播放的电影
             # filmname_cn\\熊出没.wav      --  熊出没
             
-            # template_cn\\3.wav           --  现在开始检票入场，谢谢！
+            # template_cn\\3.wav           --  现在开始检票入场，请前往
+            # gate_cn\\left.wav            --  左侧检票口
+            
+            # template_cn\\4.wav           --  检票入场，谢谢！
 
             # 检查list列表中所有需要的语音片段的路径是否正确，以及对应语音包是否都存在，如果不存在，则报错缺失的所有语音包文件路径
             missing_filename = []
@@ -735,12 +765,22 @@ def search_data():
 # 用于直接从data.xlsx中读取电影信息的函数
 def read_from_excel_and_update():
     global data
-    data = read_from_excel()  # 从Excel文件读取数据
-    update_table(data)  # 更新表格
-    messagebox.showinfo("信息", "电影信息已从data.xlsx文件中读取并更新！")
+    try:
+        # 尝试获取锁，设置超时时间为1秒
+        if table_lock.acquire(timeout=1):
+            try:
+                data = read_from_excel()  # 从Excel文件读取数据
+                update_table(data)  # 更新表格
+                messagebox.showinfo("信息", "电影信息已从data.xlsx文件中读取并更新！")
+            finally:
+                # 释放锁
+                table_lock.release()
+    except Exception as e:
+        print(f"从Excel读取并更新表格时发生错误: {e}")
+        write_error_log(e)
+    
     # 获取缺失的电影名称
     check_movie_name()
-
 
 # 读取并刷新的函数
 def refresh_data():
@@ -765,16 +805,22 @@ def refresh_data():
     # 启动爬取操作
     new_data = fetch_movie_schedules(url, progress_window)
 
-    # 更新数据
-    data = new_data
-    update_table(data)
+    # 尝试获取锁，设置超时时间为1秒
+    if table_lock.acquire(timeout=1):
+        try:
+            # 更新数据
+            data = new_data
+            update_table(data)
 
-    # 更新下拉列表
-    movie_drop_down['values'] = [f"{row[0]}-{row[1]}-{row[3]}" for row in data]
-    movie_drop_down.set('')  # 清空当前选择的电影
+            # 更新下拉列表
+            movie_drop_down['values'] = [f"{row[0]}-{row[1]}-{row[3]}" for row in data]
+            movie_drop_down.set('')  # 清空当前选择的电影
 
-    # 更新电影院名称和地址的标签
-    cinema_info_label.config(text=f"电影院：{cinema_name} 影院地址：{cinema_address}")
+            # 更新电影院名称和地址的标签
+            cinema_info_label.config(text=f"电影院：{cinema_name} 影院地址：{cinema_address}")
+        finally:
+            # 释放锁
+            table_lock.release()
 
     progress_window.destroy()
     if successful:
@@ -798,10 +844,6 @@ def clear_and_exit():
         pass
     messagebox.showinfo("信息", "所有缓存已清空并退出程序。")
     root.destroy()
-    
-# 全局变量
-cycle_time = 2  # 默认重复播放次数
-pre_minute = 5  # 默认提前检票分钟数
 
 def get_pre_minute_and_cycle_time():
     global pre_minute, cycle_time  # 声明全局变量
@@ -854,13 +896,6 @@ def get_pre_minute_and_cycle_time():
 
 # 播放自动广播的函数，检测开场时间满足提前检票时间，自动播放检票广播
 def check_movies():
-    # 检查是否有音频正在播放，如有则停止
-    try:
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.stop()
-    except:
-        pass
-    
     while True:
         # 初始化pygame和pygame.mixer
         if not pygame.get_init():
@@ -870,117 +905,110 @@ def check_movies():
             
         import time
         current_time = time.strftime('%H:%M', time.localtime(time.time()))
-        for row in data:
-            film_name = str(row[0])
-            day = str(row[1])
-            date = str(row[2])
-            start_hour, start_minute = str(row[3]).split(sep=':')[0], str(row[3]).split(sep=':')[1]
-            end_hour, end_minute = str(row[4]).split(sep=':')[0], str(row[4]).split(sep=':')[1]
-            hall_number = str(str(row[5]).split(sep='号厅')[0])
+        
+        # 尝试获取锁，设置超时时间为1秒
+        if table_lock.acquire(timeout=1):
+            try:
+                for row in data:
+                    film_name = str(row[0])
+                    day = str(row[1])
+                    date = str(row[2])
+                    start_hour, start_minute = str(row[3]).split(sep=':')[0], str(row[3]).split(sep=':')[1]
+                    end_hour, end_minute = str(row[4]).split(sep=':')[0], str(row[4]).split(sep=':')[1]
+                    hall_number = str(str(row[5]).split(sep='号厅')[0])
 
-            start_min = int(start_hour) * 60 + int(start_minute)
-            current_min = int(current_time.split(':')[0]) * 60 + int(current_time.split(':')[1])
-            delta = start_min - current_min
+                    start_min = int(start_hour) * 60 + int(start_minute)
+                    current_min = int(current_time.split(':')[0]) * 60 + int(current_time.split(':')[1])
+                    delta = start_min - current_min
 
-            film_key = f"{row[0]}-{row[1]}-{row[3]}"
+                    film_key = f"{row[0]}-{row[1]}-{row[3]}"
 
-            if day == '今天' and 0 <= delta <= pre_minute and film_key not in film_played:
-                print(f'film_key = {film_key}')
-                print(f'film_played = {film_played}')
+                    if day == '今天' and 0 <= delta <= pre_minute and film_key not in film_played:
+                        print(f'film_key = {film_key}')
+                        print(f'film_played = {film_played}')
 
-                '''
-                if hall_number in ['1', '3', '4']:
-                    check_in_counter = 'left'
-                elif hall_number in ['2', '5']:
-                    check_in_counter = 'right'
-                else:
-                    # 使用主线程执行 messagebox.showerror
-                    root.after(0, lambda: messagebox.showerror("错误", "未找到符合条件的放映厅！"))
-                    return
-                '''
+                        if hall_number in ['1', '3', '4']:
+                            check_in_counter = 'left'
+                        elif hall_number in ['2', '5']:
+                            check_in_counter = 'right'
+                        else:
+                            # 使用主线程执行 messagebox.showerror
+                            root.after(0, lambda: messagebox.showerror("错误", "未找到符合条件的放映厅！"))
+                            return
 
-                list = [os.path.join('material', 'mix', '756.wav'), os.path.join('material', 'template_cn', '1.wav'), 
-                        os.path.join('material', 'hall_cn', f'{hall_number}.wav'), 
-                        os.path.join('material', 'hour_cn', f'{start_hour}.wav'), os.path.join('material', 'minute_cn', f'{start_minute}.wav'),
-                        os.path.join('material', 'template_cn', '2.wav'), os.path.join('material', 'filmname_cn', f'{film_name}.wav'),
-                        os.path.join('material', 'template_cn', '3.wav')] * cycle_time
+                        list = [os.path.join('material', 'mix', '756.wav'), os.path.join('material', 'template_cn', '1.wav'), 
+                                os.path.join('material', 'hall_cn', f'{hall_number}.wav'), 
+                                os.path.join('material', 'hour_cn', f'{start_hour}.wav'), os.path.join('material', 'minute_cn', f'{start_minute}.wav'),
+                                os.path.join('material', 'template_cn', '2.wav'), os.path.join('material', 'filmname_cn', f'{film_name}.wav'),
+                                os.path.join('material', 'template_cn', '3.wav'), os.path.join('material', 'gate_cn', f'{check_in_counter}.wav'), 
+                                os.path.join('material', 'template_cn', '4.wav')] * cycle_time
 
-                # 756.wav                      --  756提示音
-                # template_cn\\1.wav           --  各位观众请注意
-            
-                # hall_cn\\5.wav               --  五号厅
-            
-                # hour_cn\\17.wav              --  十七点
-                # minute_cn\\15.wav            --  十五分
-            
-                # template_cn\\2.wav           --  播放的电影
-                # filmname_cn\\熊出没.wav      --  熊出没
-            
-                # template_cn\\3.wav           --  现在开始检票入场，谢谢！
+                        missing_filename = []
 
-                missing_filename = []
+                        print(f'film_name = {film_name}')
+                        print(f'day = {day}')
+                        print(f'date = {date}')
+                        print(f'start_hour = {start_hour}')
+                        print(f'start_minute = {start_minute}')
+                        print(f'end_hour = {end_hour}')
+                        print(f'end_minute = {end_minute}')
+                        print(f'hall_number = {hall_number}')
 
-                print(f'film_name = {film_name}')
-                print(f'day = {day}')
-                print(f'date = {date}')
-                print(f'start_hour = {start_hour}')
-                print(f'start_minute = {start_minute}')
-                print(f'end_hour = {end_hour}')
-                print(f'end_minute = {end_minute}')
-                print(f'hall_number = {hall_number}')
+                        for wav_file in list:
+                            if not os.path.exists(wav_file):
+                                missing_filename.append(wav_file)
+                        if missing_filename:
+                            # 使用主线程执行 messagebox.showwarning
+                            root.after(0, lambda: messagebox.showwarning("Warning", "Missing wav files!\nNo matching wav files for\n" + str(missing_filename)))
+                            write_error_log("Missing wav files!\nNo matching wav files for\n" + str(missing_filename))
+                            return
 
-                for wav_file in list:
-                    if not os.path.exists(wav_file):
-                        missing_filename.append(wav_file)
-                if missing_filename:
-                    # 使用主线程执行 messagebox.showwarning
-                    root.after(0, lambda: messagebox.showwarning("Warning", "Missing wav files!\nNo matching wav files for\n" + str(missing_filename)))
-                    write_error_log("Missing wav files!\nNo matching wav files for\n" + str(missing_filename))
-                    return
+                        film_played.append(film_key)  # 添加到已播放列表
+                        print(f'film_played = {film_played}')
 
-                film_played.append(film_key)  # 添加到已播放列表
-                print(f'film_played = {film_played}')
+                        combined = AudioSegment.empty()  # 初始化 combined 变量
 
-                combined = AudioSegment.empty()  # 初始化 combined 变量
+                        for wav_file in list:
+                            try:
+                                sound = AudioSegment.from_wav(wav_file)
+                                combined += sound
+                            except Exception as error_message:
+                                root.after(0, lambda: messagebox.showerror("Error", f"Failed to load audio file: {wav_file}\nError message: {error_message}"))
+                                write_error_log(f"Failed to load audio file: {wav_file}\nError message: {error_message}")
+                                continue
 
-                for wav_file in list:
-                    try:
-                        sound = AudioSegment.from_wav(wav_file)
-                        combined += sound
-                    except Exception as error_message:
-                        root.after(0, lambda: messagebox.showerror("Error", f"Failed to load audio file: {wav_file}\nError message: {error_message}"))
-                        write_error_log(f"Failed to load audio file: {wav_file}\nError message: {error_message}")
-                        continue
+                        if not os.path.exists("output"):
+                            os.makedirs("output")
 
-                if not os.path.exists("output"):
-                    os.makedirs("output")
+                        try:
+                            combined.export(os.path.join('output', str(film_name) + '_' + str(date) + '_' + str(start_hour) + '_' + str(start_minute) + '.wav'), format="wav")
+                        except Exception as error_message:
+                            root.after(0, lambda: messagebox.showerror("Error", f'An error occurred when exporting {os.path.join("output", str(film_name) + "_" + str(date) + "_" + str(start_hour) + "_" + str(start_minute) + ".wav")}.\n' + str(error_message)))
+                            write_error_log(error_message)
+                            return
 
-                try:
-                    combined.export(os.path.join('output', str(film_name) + '_' + str(date) + '_' + str(start_hour) + '_' + str(start_minute) + '.wav'), format="wav")
-                except Exception as error_message:
-                    root.after(0, lambda: messagebox.showerror("Error", f'An error occurred when exporting {os.path.join("output", str(film_name) + "_" + str(date) + "_" + str(start_hour) + "_" + str(start_minute) + ".wav")}.\n' + str(error_message)))
-                    write_error_log(error_message)
-                    return
+                        try:
+                            pygame.mixer.music.load(os.path.join('output', str(film_name) + '_' + str(date) + '_' + str(start_hour) + '_' + str(start_minute) + '.wav'))
+                            pygame.mixer.music.play()
+                        except Exception as error_message:
+                            root.after(0, lambda: messagebox.showerror("Error", f'An error occurred when loading {os.path.join("output", str(film_name) + "_" + str(date) + "_" + str(start_hour) + "_" + str(start_minute) + ".wav")}.\n' + str(error_message)))
+                            write_error_log(error_message)
+                            return
 
-                try:
-                    pygame.mixer.music.load(os.path.join('output', str(film_name) + '_' + str(date) + '_' + str(start_hour) + '_' + str(start_minute) + '.wav'))
-                    pygame.mixer.music.play()
-                except Exception as error_message:
-                    root.after(0, lambda: messagebox.showerror("Error", f'An error occurred when loading {os.path.join("output", str(film_name) + "_" + str(date) + "_" + str(start_hour) + "_" + str(start_minute) + ".wav")}.\n' + str(error_message)))
-                    write_error_log(error_message)
-                    return
+                        try:
+                            while pygame.mixer.music.get_busy():
+                                time.sleep(1)
+                        except:
+                            pass
 
-                try:
-                    while pygame.mixer.music.get_busy():
-                        time.sleep(1)
-                except:
-                    pass
-
-                try:    # 避免mixer被关闭，检测未初始化而报错
-                    pygame.mixer.music.stop()
-                    pygame.quit()
-                except: 
-                    pass
+                        try:    # 避免mixer被关闭，检测未初始化而报错
+                            pygame.mixer.music.stop()
+                            pygame.quit()
+                        except: 
+                            pass
+            finally:
+                # 释放锁
+                table_lock.release()
 
         time.sleep(5)  # 每隔5秒检查一次
 
@@ -1008,65 +1036,180 @@ def stop_all_audio():
         pygame.quit()
         
 # 定义一个函数来检查正在播放的电影
-# 定义一个函数来检查正在播放的电影
+import threading
+
+# 创建一个线程锁
+table_lock = threading.Lock()
+
+# 检查正在播放的电影的函数
 def check_playing_movies():
     while True:
         # 获取当前系统时间
         current_time = datetime.now().strftime('%H:%M')
         current_time_obj = datetime.strptime(current_time, '%H:%M')  # 将当前时间转换为datetime对象
         
-        # 遍历表格中的所有行
-        for item in table.get_children():
+        # 尝试获取锁，设置超时时间为1秒
+        if table_lock.acquire(timeout=1):
             try:
-                # 获取每一行的数据
-                row_data = table.item(item, 'values')
-                
-                date = row_data[1]
-                start_time = row_data[3]
-                end_time = row_data[4]
-                
-                # 将开始时间和结束时间转换为datetime对象
-                start_time_obj = datetime.strptime(start_time, '%H:%M')
-                end_time_obj = datetime.strptime(end_time, '%H:%M')
-                
-                # 计算当前时间与结束时间的差值（以分钟为单位）
-                time_difference_end = (end_time_obj - current_time_obj).total_seconds() / 60
-                time_difference_start = (start_time_obj - current_time_obj).total_seconds() / 60  # 新增
+                # 遍历表格中的所有行
+                for item in table.get_children():
+                    try:
+                        # 获取每一行的数据
+                        row_data = table.item(item, 'values')
+                        
+                        date = row_data[1]
+                        start_time = row_data[3]
+                        end_time = row_data[4]
+                        
+                        # 将开始时间和结束时间转换为datetime对象
+                        start_time_obj = datetime.strptime(start_time, '%H:%M')
+                        end_time_obj = datetime.strptime(end_time, '%H:%M')
+                        
+                        # 计算当前时间与结束时间的差值（以分钟为单位）
+                        time_difference_end = (end_time_obj - current_time_obj).total_seconds() / 60
+                        time_difference_start = (start_time_obj - current_time_obj).total_seconds() / 60  # 新增
 
-                # 判断当前时间是否在开始时间和结束时间之间
-                if start_time <= current_time <= end_time and date == '今天':
-                    # 如果正在播放，设置背景为绿色lightgreen
-                    table.tag_configure('playing', background='lightgreen')
-                    table.item(item, tags=('playing',))
-                    
-                    # 如果电影在10分钟内结束，设置背景为浅红色#F08080
-                    if 0 <= time_difference_end <= 10:
-                        table.tag_configure('ending_soon', background='#F08080')
-                        table.item(item, tags=('ending_soon',))
-                # 新增：判断是否在10分钟内即将开始
-                elif 0 <= time_difference_start <= 10 and date == '今天':
-                    table.tag_configure('upcoming', background='yellow')
-                    table.item(item, tags=('upcoming',))
-                else:
-                    # 如果不在播放，清除背景色
-                    table.item(item, tags=('',))
-            except Exception as e:
-                print(f"检查播放电影时发生错误: {e}")
-                write_error_log(e)
+                        # 判断当前时间是否在开始时间和结束时间之间
+                        if start_time <= current_time <= end_time and date == '今天':
+                            # 如果正在播放，设置背景为绿色lightgreen
+                            table.tag_configure('playing', background='lightgreen')
+                            table.item(item, tags=('playing',))
+                            
+                            # 如果电影在10分钟内结束，设置背景为浅红色#F08080
+                            if 0 <= time_difference_end <= 10:
+                                table.tag_configure('ending_soon', background='#F08080')
+                                table.item(item, tags=('ending_soon',))
+                        # 新增：判断是否在10分钟内即将开始
+                        elif 0 <= time_difference_start <= 10 and date == '今天':
+                            table.tag_configure('upcoming', background='yellow')
+                            table.item(item, tags=('upcoming',))
+                        else:
+                            # 如果不在播放，清除背景色
+                            table.item(item, tags=('',))
+                    except Exception as e:
+                        print(f"检查播放电影时发生错误: {e}")
+                        write_error_log(e)
+            finally:
+                # 释放锁
+                table_lock.release()
         
         # 每5秒检查一次
         time.sleep(5)
-        
 
+# 修改电影信息的函数
+def modify_movie_info():
+    global data
+    selection = movie_drop_down.get()
+    if not selection:
+        messagebox.showwarning("警告", "请选择一部电影")
+        return
+
+    # 获取选中的电影信息
+    selected_data = None
+    for row in data:
+        if f"{row[0]}-{row[1]}-{row[3]}" == selection:
+            selected_data = row
+            break
+
+    if not selected_data:
+        messagebox.showerror("错误", "未找到选中的电影信息")
+        return
+
+    # 弹出修改窗口
+    modify_window = tk.Toplevel(root)
+    modify_window.title("修改电影信息")
+
+    # 获取屏幕宽高
+    screen_width = modify_window.winfo_screenwidth()
+    screen_height = modify_window.winfo_screenheight()
+
+    # 设置窗口大小
+    window_width = 350
+    window_height = 300
+
+    # 计算居中位置
+    x = (screen_width // 2) - (window_width // 2)
+    y = (screen_height // 2) - (window_height // 2)
+
+    # 设置窗口大小及位置
+    modify_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+    # 创建输入框和标签
+    labels = ["电影名称", "日期", "日期详情", "开始时间", "结束时间", "放映厅"]
+    entries = []
+    for i, label_text in enumerate(labels):
+        tk.Label(modify_window, text=label_text).grid(row=i, column=0, padx=10, pady=5)
+        entry = tk.Entry(modify_window, width=30)
+        entry.grid(row=i, column=1, padx=10, pady=5)
+        entry.insert(0, selected_data[i])
+        entries.append(entry)
+
+    # 保存修改的函数
+    def save_modifications():
+        global data
+        try:
+            # 获取输入框中的数据
+            modified_data = [entry.get() for entry in entries]
+
+            # 验证开始时间和结束时间
+            start_time = modified_data[3]
+            end_time = modified_data[4]
+
+            if not validate_time(start_time) or not validate_time(end_time):
+                messagebox.showerror("错误", "时间格式不正确，请输入有效的24小时制时间（如14:30）")
+                return
+
+            # 尝试获取锁，设置超时时间为1秒
+            if table_lock.acquire(timeout=1):
+                try:
+                    # 更新数据
+                    for i, row in enumerate(data):
+                        if f"{row[0]}-{row[1]}-{row[3]}" == selection:
+                            data[i] = modified_data
+                            break
+
+                    # 写入 Excel 文件
+                    write_to_excel(data)
+
+                    # 更新表格
+                    update_table(data)
+
+                    # 更新下拉列表
+                    movie_drop_down['values'] = [f"{row[0]}-{row[1]}-{row[3]}" for row in data]
+                    movie_drop_down.set('')  # 清空当前选择的电影
+                finally:
+                    # 释放锁
+                    table_lock.release()
+
+            # 关闭修改窗口
+            modify_window.destroy()
+
+            messagebox.showinfo("信息", "电影信息已成功修改并保存！")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存修改时发生错误: {e}")
+            write_error_log(e)
+
+    # 验证时间格式的函数
+    def validate_time(time_str):
+        try:
+            hours, minutes = map(int, time_str.split(':'))
+            if 0 <= hours < 24 and 0 <= minutes < 60:
+                return True
+            return False
+        except ValueError:
+            return False
+
+    # 保存按钮
+    save_button = tk.Button(modify_window, text="保存修改", command=save_modifications)
+    save_button.grid(row=len(labels), column=0, columnspan=2, pady=20)
+        
 # 更新当前时间的函数
 def update_time():
     current_time = time.strftime('%H:%M:%S', time.localtime(time.time()))
     time_label.config(text=current_time)
     # 每隔1秒更新一次时间
     root.after(1000, update_time)
-
-
-
+        
 # 主程序
 if __name__ == '__main__':
     # 初始化null值
@@ -1221,6 +1364,7 @@ if __name__ == '__main__':
     second_frame = tk.Frame(root)
     second_frame.pack(fill='x')
     tk.Label(second_frame, text=f"已设置提前 {pre_minute} 分钟检票，每个广播循环播放 {cycle_time} 次。").pack(side=tk.LEFT, padx=10, pady=1)
+    tk.Label(second_frame, text=f"*黄色-即将开场*  *绿色-正在播放*  *红色-即将散场*").pack(side=tk.RIGHT, padx=10, pady=1)
     
     # 第3行，用来显示电影院名称和地址
     cinema_frame = tk.Frame(root)
