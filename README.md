@@ -1,11 +1,11 @@
 # Automatic-Cinema-Announcement-System
 It is a system that can play film announcement automatically.
 
-下载地址：https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System-2025.02.11.zip
+下载地址：https://wuhanqing.cn/release/Automatic-Cinema-Announcement-System-2025.03.06.zip
 
 软件名称：沈北万瑞电影城-自动广播系统
 
-版本号：2025.02.14 15:10(正式版)
+版本号：2025.03.06 08:20(正式版)
 
 软件版权归属：吴瀚庆
 
@@ -39,6 +39,23 @@ It is a system that can play film announcement automatically.
 
 新增了10分钟内即将开场电影用黄色显示的功能
 下方文本显示区进行了一些精简，并添加了爬取电影院名称和地址的功能，显示在文本显示区中
+
+2025.02.28 11:20
+修改了data列表中电影信息的排序方式，不再按照星期排序，而是按照具体日期排序
+按照主要关键字：Date day（如“2月28”），次要关键字：Start time（如14:30）来排序
+
+2025.03.04 19:00
+
+修改了write_error_log()函数的逻辑，添加了超时处理，如连接VPN时，可能无法成功发送错误日志，避免出现写入错误日志时，程序卡死
+
+2025.03.04 19:30
+
+添加了进程锁，以免访问表格数据时，出现线程冲突，导致程序卡死
+修改了def check_movie_name()的逻辑，使得检查电影名称文件时，不再输出重复的缺失文件
+
+2025.03.06 08:20
+
+更新语音包：插翅难飞.wav
 
 ————————————————————
 
