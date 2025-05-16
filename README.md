@@ -135,6 +135,10 @@ output文件夹：存放生成的广播语音文件。
 
 7.语音包更新
 
+程序所需语音包，由GPT-SoVITS合成。
+
+Github链接：https://github.com/RVC-Boss/GPT-SoVITS
+
 更新语音包，请联系网页作者吴瀚庆，微信：whq20050121，或邮箱：m19528873640@outlook.com
 
 将需要更新的语音包，放入对应的material文件夹中，例如电影名称语音包需要放到material文件夹下的filmname_cn文件夹中。
